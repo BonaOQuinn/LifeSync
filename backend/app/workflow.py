@@ -80,11 +80,15 @@ def analyze_fixture(state, case):
     entries = []
     if not ctx["contact"]:
         entries = [("coverage", None, None, "CRM evidence is unavailable", "Explicit contact mapping is missing. Review is incomplete; no CRM facts were inferred.", [ctx["client"]["source_id"]], "Manual review")]
-    elif client_id == "C001" and case["event"]["event_type"] == "Divorce":
+    elif (client_id == "C001" and case["event"]["event_type"] == "Divorce"
+          and case["event"]["affected_role"] in {"client", "account_owner"}
+          and case["event"]["affected_person"].casefold() == "maya bennett"):
         entries = [
             ("address", "A101", "address", "Mailing address needs review", "A101 has the old address. The newer client-call record confirms 92 Harbor Street; an earlier note conflicts. Confirm the client's explicit instructions.", ["CW:A101:snapshot", "WB:N001:note", "WB:N002:note"], "Needs information"),
             ("beneficiary", "A102", "beneficiaries", "Former spouse is still listed", "A102 lists Daniel Bennett. The client supplied no replacement instructions. Do not infer a replacement or the legal effect of the divorce.", ["CW:A102:snapshot", "WB:N001:note"], "Needs information")]
-    elif client_id == "C003" and case["event"]["event_type"] == "Death":
+    elif (client_id == "C003" and case["event"]["event_type"] == "Death"
+          and case["event"]["affected_role"] == "beneficiary"
+          and case["event"]["affected_person"].casefold() == "luis ruiz"):
         entries = [("death", "A302", "beneficiaries", "Beneficiary death requires authority review", "The seeded note reports Luis Ruiz's death, while Elena, the account owner, is living. Sample servicing rules are unknown; obtain evidence and review authority.", ["CW:A302:snapshot", "WB:N004:note"], "Manual review")]
     else:
         entries = [("event", None, None, "Event-specific process needs manual review", "This secondary event has no annotated automatic servicing fixture. Obtain specific instructions and verify applicable rules.", case["event"]["evidence_refs"], "Manual review")]
@@ -158,10 +162,11 @@ def record_instruction(state, case, finding, payload):
         raise HTTPException(409, "Review the finding and conflicting evidence before recording instructions.")
     if stale_sources(state, case, finding.get("reviewed_versions", {})):
         raise HTTPException(409, "Evidence changed. Review the finding again.")
-    source_for_client(state, payload.source_ref, case["client_id"])
+    instruction_source = source_for_client(state, payload.source_ref, case["client_id"])
     value = validated_value(finding, payload)
     instruction = {"instruction_id": identifier("INS"), "actor": ACTOR["user_id"], "timestamp": now(),
-                   "value": value, "source_ref": payload.source_ref, "client_confirmed": True, "reason": payload.reason}
+                   "value": value, "source_ref": payload.source_ref, "source_version": instruction_source["version"],
+                   "client_confirmed": True, "reason": payload.reason}
     finding["instruction"] = instruction
     finding["status"] = "Draft"
     finding["version"] += 1
@@ -198,6 +203,9 @@ def prepare_draft(state, case, finding):
         raise HTTPException(409, "Reviewed evidence and explicit client instructions are required.")
     if stale_sources(state, case, finding.get("reviewed_versions", {})):
         raise HTTPException(409, "Evidence changed. Review and confirm instructions again.")
+    instruction_source = source_for_client(state, finding["instruction"]["source_ref"], case["client_id"])
+    if instruction_source["version"] != finding["instruction"]["source_version"]:
+        raise HTTPException(409, "Instruction evidence changed. Reconfirm the client instruction.")
     account = ClientWorksAdapter(state).get_account_snapshot(finding["account_id"])
     requirements = get_sample_requirements(case, finding, account)
     if not requirements:
@@ -233,6 +241,13 @@ def validate_draft(state, draft):
     if any(not draft["signatures"].get(signer) for signer in draft["requirements"]["signers"]):
         errors.append("Required simulated signatures are missing.")
     return errors
+
+
+def get_simulated_signature_status(draft):
+    return {"source_id": f"SIM:SIGNATURE:{draft['draft_id']}", "version": draft["version"],
+            "refreshed_at": draft["refreshed_at"], "coverage": "complete", "simulation": True,
+            "signers": [{"signer": signer, "status": "Signed" if draft["signatures"].get(signer) else "Missing"}
+                        for signer in draft["requirements"]["signers"]]}
 
 
 def draft_view(state, draft):

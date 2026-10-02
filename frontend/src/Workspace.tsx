@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Activity, ArrowRight, ArrowUpRight, BriefcaseBusiness, ChevronRight, FileCheck2, Landmark, MapPin, Search, Users } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { useResource } from './api'
+import { api, useResource } from './api'
 import { rememberClient } from './App'
 import { Button, Empty, LoadError, Loading, money, PageTitle, Panel, SourceMeta, Status, TaskList } from './ui'
 import type { Account, Client, Dashboard } from './types'
@@ -29,7 +29,8 @@ function QuickViews({ mode, active, onSelect }: { mode: 'Clients' | 'Accounts'; 
 
 export function ClientsPage() {
   const { data, error, loading, reload } = useResource<Client[]>('/clients')
-  const [params, setParams] = useSearchParams()
+  const [params, setParams] = useSearchParams(sessionStorage.getItem('lifesync:clients-query') ?? '')
+  useEffect(() => { sessionStorage.setItem('lifesync:clients-query', params.toString()) }, [params])
   const search = params.get('q') ?? '', filter = params.get('event') ?? ''
   function update(key: string, value: string) { setParams(previous => { value ? previous.set(key, value) : previous.delete(key); return previous }, { replace: true }) }
   const clients = (data ?? []).filter(client => (!filter || client.event_hint === filter) && `${client.display_name} ${client.client_id} ${client.primary_email}`.toLowerCase().includes(search.toLowerCase()))
@@ -52,7 +53,9 @@ export function AccountTable({ accounts }: { accounts: Account[] }) {
 
 export function AccountsPage() {
   const { clientId } = useParams()
-  const [params, setParams] = useSearchParams()
+  const queryKey = `lifesync:accounts-query:${clientId ?? 'all'}`
+  const [params, setParams] = useSearchParams(sessionStorage.getItem(queryKey) ?? '')
+  useEffect(() => { sessionStorage.setItem(queryKey, params.toString()) }, [params, queryKey])
   const clientFilter = clientId ?? params.get('client') ?? ''
   const clients = useResource<Client[]>('/clients')
   const { data, error, loading, reload } = useResource<Account[]>(clientFilter ? `/clients/${clientFilter}/accounts` : '/clients')
@@ -63,7 +66,7 @@ export function AccountsPage() {
     let active = true
     if (!clientFilter && clients.data) {
       setAllLoading(true)
-      import('./api').then(({ api }) => Promise.all(clients.data!.map(client => api<Account[]>(`/clients/${client.client_id}/accounts`))))
+      Promise.all(clients.data.map(client => api<Account[]>(`/clients/${client.client_id}/accounts`)))
         .then(groups => { if (active) { setAllAccounts(groups.flat()); setAllError('') } })
         .catch((failure: Error) => { if (active) setAllError(failure.message) })
         .finally(() => { if (active) setAllLoading(false) })

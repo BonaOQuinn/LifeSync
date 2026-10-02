@@ -185,6 +185,8 @@ def create_app(database_path: str | Path | None = None):
         with store.transaction() as state:
             draft = owned_record(state, "drafts", draft_id)
             flow.require_version(draft, payload.expected_version)
+            if draft.get("retired"):
+                raise HTTPException(409, "Draft was retired. Return to the active finding.")
             case = flow.get_case(state, draft["case_id"])
             finding = flow.get_finding(case, draft["finding_id"])
             corrected = payload.model_copy(update={"expected_version": finding["version"]})
@@ -235,6 +237,10 @@ def create_app(database_path: str | Path | None = None):
             flow.touch(case)
             audit(state, case["client_id"], "simulated_signature", "Signed" if payload.signed else "Removed", case["case_id"], draft_id=draft_id, draft_version=draft["version"], signer=payload.signer)
             return flow.draft_view(state, draft)
+
+    @app.get("/api/drafts/{draft_id}/signature-status")
+    def signature_status(draft_id: str):
+        return flow.get_simulated_signature_status(owned_record(store.snapshot(), "drafts", draft_id))
 
     @app.post("/api/drafts/{draft_id}/submit")
     def submit_draft(draft_id: str, payload: Submit):

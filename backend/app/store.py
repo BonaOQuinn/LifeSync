@@ -12,11 +12,15 @@ class Store:
     def __init__(self, path: str | Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.connect() as connection:
+        connection = self.connect()
+        try:
             connection.execute("CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY, data TEXT NOT NULL)")
             if not connection.execute("SELECT 1 FROM state WHERE id = 1").fetchone():
                 fixture = json.loads((ROOT / "fixtures" / "seed.json").read_text(encoding="utf-8"))
                 connection.execute("INSERT INTO state VALUES (1, ?)", (json.dumps(fixture),))
+            connection.commit()
+        finally:
+            connection.close()
 
     def connect(self):
         connection = sqlite3.connect(self.path, timeout=15)

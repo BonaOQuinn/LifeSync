@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { AlertCircle, ArrowUpRight, Check, FileText, LoaderCircle, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useResource } from './api'
@@ -14,6 +14,15 @@ export function Status({ value }: { value: string }) {
 }
 export function Button({ children, className = '', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return <button className={`button ${className}`} {...props}>{children}</button>
+}
+export function AsyncCheckbox({ checked, disabled, onSave }: { checked: boolean; disabled: boolean; onSave: (value: boolean) => Promise<boolean> }) {
+  const [value, setValue] = useState(checked)
+  useEffect(() => { setValue(checked) }, [checked])
+  return <input type="checkbox" checked={value} disabled={disabled} onChange={async event => {
+    const next = event.currentTarget.checked
+    setValue(next)
+    if (!await onSave(next)) setValue(checked)
+  }}/>
 }
 export function Panel({ title, eyebrow, action, children, className = '' }: { title?: string; eyebrow?: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return <section className={`panel ${className}`}>{title && <div className="panel-heading"><div>{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h2>{title}</h2></div>{action}</div>}{children}</section>
@@ -35,7 +44,7 @@ export function SourceMeta({ record }: { record: Meta }) {
   return <div className="source-meta"><code>{record.source_id}</code><span>v{record.version}</span><span>Refreshed {date(record.refreshed_at)}</span><span>{record.coverage}</span></div>
 }
 export function TaskList({ tasks }: { tasks: Task[] }) {
-  return tasks.length ? <div className="task-list">{tasks.map(task => <div className="task-row" key={task.task_id}><div className="task-icon"><Check size={15}/></div><div className="grow"><strong>{task.title}</strong><div className="muted small">{owners[task.owner] ?? task.owner} · {date(task.due_date)}{task.delivery && ` · ${task.delivery}`}</div></div>{task.case_id ? <Link className="icon-link" aria-label={`Open task: ${task.title}`} to={`/lifesync/${task.client_id}`}><ArrowUpRight size={18}/></Link> : <Status value={task.status}/>}</div>)}</div> : <Empty title="No open tasks"/>
+  return tasks.length ? <div className="task-list">{tasks.map(task => <div className="task-row" key={task.task_id}><div className="task-icon"><Check size={15}/></div><div className="grow"><strong>{task.title}</strong><div className="muted small">{owners[task.owner] ?? task.owner} · {date(task.due_date)}{task.delivery && ` · ${task.delivery}`}</div></div><Status value={task.status}/><Link className="icon-link" aria-label={`Open task: ${task.title}`} to={`/lifesync/${task.client_id}`}><ArrowUpRight size={18}/></Link></div>)}</div> : <Empty title="No open tasks"/>
 }
 export function EvidenceModal({ sourceId, onClose }: { sourceId: string; onClose: () => void }) {
   const { data, error, loading, reload } = useResource<Evidence>(`/sources/${encodeURIComponent(sourceId)}`)
