@@ -275,6 +275,23 @@ class LifeSyncTests(unittest.TestCase):
         self.submit(draft, code=409)
         self.assertEqual(self.client.get("/api/clients/C002").status_code, 403)
 
+    def test_instruction_source_change_before_preparation_requires_reconfirmation(self):
+        case = self.case()
+        finding = self.decision(case, case["findings"][0])
+        finding = self.post(f"/cases/{case['case_id']}/findings/{finding['finding_id']}/instruction", {
+            "expected_version": finding["version"], "value": "92 Harbor Street, Portland, OR 97209",
+            "source_ref": "DOC:D001", "client_confirmed": True, "reason": "Client confirmed the account address in a synthetic instruction record."})
+        with self.store.transaction() as state:
+            state["documents"]["D001"]["version"] += 1
+        self.post(f"/cases/{case['case_id']}/findings/{finding['finding_id']}/draft", {"expected_version": finding["version"]}, 409)
+
+    def test_account_owner_death_cannot_use_beneficiary_death_fixture(self):
+        case = self.case("C003", "Death", "account_owner")
+        finding = case["findings"][0]
+        self.assertIsNone(finding["field"])
+        self.assertEqual(finding["status"], "Manual review")
+        self.post(f"/cases/{case['case_id']}/findings/{finding['finding_id']}/draft", {"expected_version": finding["version"]}, 409)
+
 
 if __name__ == "__main__":
     unittest.main()

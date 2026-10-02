@@ -1,208 +1,104 @@
 # LifeSync
 
-An AI-assisted lifecycle page inside a simulated LPL ClientWorks workspace.
+A working lifecycle review prototype inside a simulated ClientWorks workspace, built from the supplied RAD and development plan for the 2026 LPL Financial University Hackathon.
 
-LifeSync helps financial advisors review client records after a confirmed life event, identify information that may need attention, prepare authorized update drafts, and track each request to a recorded outcome. The prototype connects a ClientWorks simulation with a Wealthbox CRM simulation and uses Amazon Bedrock for AI analysis.
+**Development stages 1–4 are implemented.** Findings are labeled deterministic fixtures. ClientWorks, Wealthbox, contact synchronization, signatures, documents, institution requests, and receipts use synthetic data and simulated actions. Live Bedrock analysis belongs to stage 5 and is not called by this build.
 
-Built for the **2026 LPL Financial University Hackathon**.
+## What works
 
-## Project status
-
-This README describes the agreed prototype scope and proposed implementation. Application source code was not available when it was written. Folder names, configuration variables, and launch commands below are a proposed repository convention; implement and verify them before treating this as a runnable quick start.
-
-The prototype uses synthetic client data. ClientWorks, Wealthbox, signatures, and institution submissions are simulated. Bedrock analysis is intended to run against an enabled model in the event AWS account. Advisor Handover is outside this release.
-
-## The problem
-
-Life events such as marriage, divorce, or death can leave contact details, account information, and relationship records inconsistent. Advisors need to determine what requires review, collect specific instructions, prepare the appropriate requests, and follow up on incomplete work.
-
-LifeSync brings that process into the advisor workspace, with source evidence and human approval at each consequential step.
-
-## Prototype scope
-
-| Component | Planned behavior |
+| Stage | Delivered behavior |
 | --- | --- |
-| ClientWorks simulation | Home dashboard, assigned-client search, account lists, notifications, and request tracking. |
-| Wealthbox simulation | Linked contacts, dated notes, owned tasks, and an LPL Financial account view. |
-| LifeSync page | Event confirmation, AI findings, evidence review, client instructions, draft comparison, approvals, and request outcomes. |
-| Integration adapters | Explicit client/contact linking, supported contact-field synchronization, and simulated account submissions. |
-| AI analysis | Source-linked findings with missing information and conflicting evidence shown explicitly. |
+| 1 · ClientWorks | Client Management shell, Home notifications and recent requests, assigned-client search and Quick Views, profiles, masked account tables/details, and client-specific LifeSync navigation. |
+| 2 · Wealthbox | Separate CRM shell, contacts, dated notes, owned tasks, explicit mapping controls, Unlinked state, and the read-only LPL Financial account tab and launcher. |
+| 3 · Adapters | Two-way address/email synchronization, expected-version checks, deduplication keys, one propagation per origin event, visible conflicts, and independent account request tracking. |
+| 4 · LifeSync | Event confirmation, source evidence and coverage, fixture findings, client instructions, draft comparisons, exact-version approval, simulated document/signature gates, reconciliation, receipts, resume, and audit history. |
 
-The primary demo is a divorce case. Marriage and death are smaller review examples. The prototype does not execute trades, move money, choose replacement beneficiaries, or make legal or tax determinations.
+Advisor Handover and unrelated ClientWorks tabs are outside this build. Unavailable controls are explicitly disabled.
 
-## Advisor workflow
+## Run locally
 
-1. Open the simulated ClientWorks **Clients** page and select an assigned client.
-2. Review the client's accounts and linked Wealthbox notes/tasks.
-3. Open **LifeSync** and confirm the event, affected person, and supporting evidence.
-4. Run AI analysis on authorized source records.
-5. Review findings and record specific client instructions or a documented no-change decision.
-6. Prepare per-account drafts showing current and proposed values.
-7. Approve the exact draft version and satisfy simulated document/signature requirements.
-8. Submit through the mock account-service adapter.
-9. Track each request and keep unresolved items open with a responsible owner.
+Use Node.js 22.12+ or 24 and Python 3.11+. Checked with Node 24 and Python 3.14. No AWS credentials, bucket, or table are needed for these stages.
 
-**Contact synchronization and account servicing are separate outcomes.** An address appearing in both contact records does not establish that an account update has completed.
+From the `LifeSync` repository, start the backend in one PowerShell terminal:
 
-## Demonstration case
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-Client `C001` reports a divorce:
+Start the frontend in a second terminal:
 
-- Account `A101` has an outdated address.
-- Account `A102` lists the former spouse as a beneficiary.
-- The client confirms a new address but has not supplied beneficiary instructions.
+```powershell
+cd frontend
+npm.cmd ci
+npm.cmd run dev
+```
 
-Expected behavior: AI flags both records with supporting sources. LifeSync prepares the address draft and creates a beneficiary follow-up. The address request can complete through a simulated receipt while the overall case remains open. The AI never invents a replacement beneficiary.
+Open **http://127.0.0.1:5173**. API documentation: **http://127.0.0.1:8000/docs**. Vite proxies `/api` to port 8000. On macOS/Linux use `.venv/bin/python` and `npm`.
 
-Include a client outside the active advisor's assignment to demonstrate access denial, plus conflicting dated CRM notes to demonstrate evidence review.
+Cases, drafts, signatures, tasks, requests, sync conflicts, and audit events persist in `backend/data/state.sqlite3`. Refreshing or restarting resumes saved work. SQLite is the local implementation of the proposed persistence boundary; AWS storage adapters remain future work.
 
-## Proposed architecture
+The backend uses a **fixed, server-owned simulated advisor**, Alex Morgan (`advisor-01`). Request headers cannot select another identity. Every client/account/source/case operation checks current assignment and effective access dates. This is local demo identity, not production authentication; bind to loopback.
 
-| Layer | Proposed technology | Responsibility |
-| --- | --- | --- |
-| Frontend | React and TypeScript | ClientWorks shell, Wealthbox simulation, and LifeSync review UI. |
-| Backend | Python and FastAPI | Access checks, source adapters, validation, workflow state, and model calls. |
-| AI | Amazon Bedrock | Analyze retrieved evidence and prepare proposed findings/draft text. |
-| Documents | Amazon S3 | Synthetic source documents and draft packets. |
-| Persistent state | Amazon DynamoDB | Cases, instructions, draft versions, tasks, requests, and audit events. |
+## Demo
 
-Keep external systems behind adapters so production integrations can replace simulations without rewriting the review workflow. Lambda and API Gateway deployment are optional after the core demo works.
+1. Open **Clients → Maya Bennett (C001) → Financial accounts**. Inspect A101's old address and A102's former-spouse beneficiary.
+2. Open the linked **Wealthbox** contact. Inspect both dated address notes, owned tasks, and **LPL Financial** account projection. Avery Park (W004) demonstrates **Unlinked**.
+3. Open **LifeSync**, confirm Divorce with Maya as the affected client, select evidence, and leave the event date unknown if not supplied. Click **Load fixture findings**.
+4. Open both conflicting note sources. Mark address evidence reviewed and record the client-confirmed address `92 Harbor Street, Portland, OR 97209`, evidence `DOC:D001`, a reason, and client confirmation. Prepare the draft.
+5. For the beneficiary finding, create a follow-up owned by Taylor Chen. Leave the date blank to demonstrate **Needs date**. No replacement is inferred.
+6. In **Drafts & approvals**, compare current/proposed values. Approve the exact version and mark the simulated document received. Submission stays blocked until Maya's simulated signature is supplied. An edit clears prior approval, documents, and signatures.
+7. Submit once. **Retry same submission** returns the same logical request. In **Requests**, simulate Processing, then Completed. Inspect or download the simulated receipt.
+8. Refresh. The address finding is Completed; the beneficiary remains Needs information and the case remains Open.
+9. Separately approve a supported contact update in Wealthbox's **LPL Financial** tab. **Demonstrate version conflict** deliberately submits a mismatched version. Review the fresh versions and synchronize the intended value to resolve it. Switch origin to Wealthbox for the reverse direction.
 
-### Proposed repository structure
+Elena Ruiz (C003) provides a beneficiary-death review. The affected beneficiary is Luis Ruiz; Elena is living. Unknown authority/process rules require manual review. Jordan Lee (C002) is seeded for marriage and denied to the active advisor.
 
-| Path | Contents |
-| --- | --- |
-| `frontend/` | ClientWorks shell, Wealthbox views, LifeSync components, and API client. |
-| `backend/app/main.py` | FastAPI application entry point. |
-| `backend/app/adapters/` | ClientWorks, Wealthbox, signature, and submission adapters. |
-| `backend/app/services/` | AI analysis, process rules, and case transitions. |
-| `backend/app/models/` | Validated request, record, finding, and draft schemas. |
-| `backend/requirements.txt` | Backend dependencies. |
-| `fixtures/` | Synthetic clients, accounts, notes, tasks, and expected findings. |
-| `tests/` | Authorization, approval, synchronization, and retry checks. |
-| `docs/` | RAD, development plan, screenshot references, and demo instructions. |
-
-## Proposed local setup
-
-Prerequisites: Node.js/npm, Python with virtual-environment support, and authorized AWS credentials with access to an event-approved Bedrock model. Pin runtime and dependency versions when the scaffold is created.
-
-The following commands assume the proposed structure above, a Vite frontend with a `dev` script, and a FastAPI app exported as `app` in `backend/app/main.py`. They have not been tested against application code.
-
-### Backend
+## Verify
 
 From the repository root:
 
-```bash
-cd backend
-python -m venv .venv
+```powershell
+.\backend\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Activate the environment on Windows PowerShell:
+Frontend build and browser checks:
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Or on macOS/Linux:
-
-```bash
-source .venv/bin/activate
-```
-
-Then install dependencies and start the proposed entry point:
-
-```bash
-python -m pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --port 8000
-```
-
-### Frontend
-
-In a second terminal, from the repository root:
-
-```bash
 cd frontend
-npm install
-npm run dev
+npm.cmd run build
+npm.cmd run test:e2e
 ```
 
-Use the URL printed by the frontend server. Configure the backend to allow the actual local frontend origin.
+Browser tests use installed Microsoft Edge. Set `PLAYWRIGHT_CHANNEL=chrome` for installed Chrome, or install Playwright Chromium and use `PLAYWRIGHT_CHANNEL=chromium`. Ensure the Python visible to Playwright has backend dependencies installed (activate `backend/.venv` if needed).
 
-### Configuration contract
+Browser tests start servers on 5174 and 8001, use separate `backend/data/e2e.sqlite3` state, and save screenshots/traces to ignored `frontend/test-results/`. They leave the normal demo database intact. Backend tests use isolated temporary databases.
 
-These variable names are proposed and must be wired into backend/frontend configuration. A local `.env` file is useful only if the application explicitly loads it.
+## Reset the synthetic demo
 
-| Variable | Used by | Purpose |
-| --- | --- | --- |
-| `AWS_REGION` | Backend | Region where the selected model and resources are available. |
-| `BEDROCK_MODEL_ID` | Backend | Exact enabled model or inference-profile identifier. |
-| `S3_BUCKET_NAME` | Backend | Synthetic document bucket. |
-| `DYNAMODB_TABLE_NAME` | Backend | Prototype state table. |
-| `SOURCE_SYSTEM_MODE` | Backend | `simulation` for ClientWorks/Wealthbox and external actions. |
-| `AI_MODE` | Backend | `bedrock` for live analysis; `fixture` only for labeled development output. |
-| `VITE_API_BASE_URL` | Frontend | Backend URL, for example `http://localhost:8000`. |
+Stop the backend, then run from `backend`:
 
-Keep AI mode independent of source-system mode: the intended demo combines **simulated systems with live Bedrock analysis**. Verify a minimal Bedrock call early. Do not silently substitute prerecorded findings when live inference fails.
+```powershell
+.\.venv\Scripts\python.exe seed.py --reset
+```
 
-Use the AWS SDK credential provider chain with event-issued credentials or an approved profile. Never put credentials in frontend variables or commit them. Temporary credentials may require a session token. Commit a credential-free `.env.example` and ignore local environment files.
+This intentionally replaces saved work and audit history with fresh fixtures. Without `--reset`, existing work is preserved. There is no browser reset endpoint.
 
-Create the configured bucket/table and supply a documented fixture-loading procedure before declaring setup complete. No seed or reset command is assumed to exist yet.
+## Repository
 
-## Simulation interface reference
+```text
+backend/app/       FastAPI routes, security, adapters, workflow rules, SQLite store
+frontend/src/      React/TypeScript ClientWorks, Wealthbox, and LifeSync
+fixtures/seed.json Three clients, six accounts, linked records, and evidence
+tests/             Backend acceptance and concurrency checks
+frontend/tests/    Browser journey and responsive layout checks
+docs/              Supplied RAD/plan and implemented requirements
+```
 
-The supplied ClientWorks video screenshots show:
+See [implementation and acceptance mapping](docs/implementation.md). Configuration is documented in `.env.example`; environment variables are read from the shell, and `.env` is not loaded automatically.
 
-- A dark **Client Management** header and horizontal navigation.
-- **Home** panels for notifications, reminders, quick actions, and recent requests.
-- **Clients** and **Accounts** pages with Quick Views, search, filter chips, and tables.
-- A **Practice Metrics** page, which is optional for this demo.
+The UI follows layout patterns described in the documents. Original screenshot assets were not supplied in this workspace; this is an interpretation of documented patterns, not a verified reproduction of current production screens.
 
-The frames depict a training environment with 2018 dates. They guide the demonstrated layout rather than establishing current production UI. LifeSync is a proposed new navigation tab and client-specific action.
-
-The Wealthbox reference shows an **LPL Financial** launcher and contact tab, **Manage Linked Clients**, **Open in LPL Financial**, total value, and Account/Title/Type/Class/Value columns. Still images establish visible controls, not their full interaction behavior.
-
-## Development order
-
-1. Create shared synthetic data and the ClientWorks shell.
-2. Build Wealthbox contacts, notes, tasks, and the LPL account view.
-3. Connect adapters and implement supported contact synchronization.
-4. Build LifeSync states and review controls using labeled fixture findings.
-5. Add live Bedrock analysis and validate its structured output and source references.
-6. Verify critical cases, measure the demo, and package the submission.
-
-Probe Bedrock access early while the simulations are being built. Defer custom training, scanned-document extraction, live messaging, production APIs, and advanced metrics until the core workflow passes.
-
-## Verification checklist
-
-These are intended release checks, not reported test results:
-
-- Unassigned client/account/source requests fail at the backend.
-- Every AI factual finding has an authorized, resolvable source reference.
-- Missing beneficiary instructions remain unresolved.
-- Incomplete documents or signatures block submission.
-- Editing an approved draft or changing relevant evidence requires new review.
-- Repeated submission with one key creates one logical request.
-- Completed and rejected account items retain separate outcomes.
-- Contact synchronization handles conflicts without echo loops.
-- Refresh preserves cases, draft edits, tasks, and review history.
-- AI failures preserve work and display an explicit retry/error state.
-- Malicious source text cannot override permissions or approval gates.
-- Main controls support keyboard use; status is communicated through text.
-
-Record manual and assisted review time on the same synthetic case, including correction time. Report observed findings, false positives, and missed items. Prototype checks do not establish production regulatory compliance.
-
-## Documentation and references
-
-Place the project documents in `docs/` when setting up the repository:
-
-- `LifeSync_Page_RAD.docx`
-- `LifeSync_Development_Plan.docx`
-- Supplied ClientWorks video frames and Wealthbox integration screenshot
-
-Public references:
-
-- [ClientWorks overview video](https://lpl.vids.io/videos/489adfbb1a11e3c0c0/lpl-client-works-overview)
-- [Wealthbox two-way contact synchronization](https://help.wealthbox.com/hc/en-us/articles/34470324688539-How-to-use-the-two-way-sync-integration-between-Wealthbox-and-LPL-ClientWorks)
-- [Wealthbox financial account synchronization](https://help.wealthbox.com/hc/en-us/articles/36073560352283-How-to-use-the-Financial-Account-Sync-integration-between-Wealthbox-and-LPL-ClientWorks)
-
-Production development requires confirmation of ClientWorks embedding, identity and assignments, Wealthbox notes/task access, account write operations, signature providers, process rules, retention, and deployment approval. This hackathon prototype is a proposed integration and is not an official LPL or Wealthbox product.
+Framework references: [React](https://react.dev/learn), [Vite](https://vite.dev/guide/), [FastAPI testing](https://fastapi.tiangolo.com/tutorial/testing/).

@@ -9,4 +9,5 @@ frontend/playwright-report/
 .env
 .env.local
 *.log
+*.tsbuildinfo
 .DS_Store
